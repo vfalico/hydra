@@ -326,6 +326,7 @@ void __init dummy_lproc_prepare_boot_cpu(void)
 	setup_max_cpus = cpumask_weight(dummy_lproc_cpu_mask);
 
 	cpumask_copy((struct cpumask *)cpu_present_mask, dummy_lproc_cpu_mask);
+	cpumask_set_cpu(cpu, &phys_cpu_present_map);
 	cpumask_clear((struct cpumask *)cpu_online_mask);
 	cpumask_set_cpu(first_cpu(cpumask_bits(dummy_lproc_cpu_mask)),
 			(struct cpumask *)cpu_online_mask);
