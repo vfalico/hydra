@@ -7,7 +7,7 @@ fi
 
 [ -f ./defines.sh ] && . ./defines.sh
 
-[ -z "$TUN_ADDR" ] && TUN_ADDR=0x1e11000
+[ -z "$TUN_ADDR" ] && TUN_ADDR=0x9D000
 
 REPRESENTATIVE=`cat /proc/cpuinfo | grep processor | awk '{print $3}' | head -n 1`
 TUN_CPU=$(( $REPRESENTATIVE + 1 ))
