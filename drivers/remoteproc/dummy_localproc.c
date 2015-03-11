@@ -25,7 +25,6 @@
 #include <asm/apic.h>
 #include <asm/tlbflush.h>
 #include <linux/mc146818rtc.h>
-#include <asm/smpboot_hooks.h>
 #include <asm/uv/uv.h>
 #include <linux/cpu.h>
 #include <asm/cpu.h>
@@ -104,7 +103,7 @@ unsigned char *x86_trampoline_bsp_base;
 
 int dummy_lproc_boot_remote_cpu(int boot_cpu, void *start_addr, void *boot_params)
 {
-	unsigned long boot_error = 0, start_ip;
+	unsigned long boot_error = 0, start_ip, flags;
 	int apicid, send_status = 0, j, accept_status, ret;
 	size_t size = PAGE_ALIGN(x86_trampoline_bsp_end - x86_trampoline_bsp_start);
 	char *bsp_hacked;
@@ -141,7 +140,17 @@ int dummy_lproc_boot_remote_cpu(int boot_cpu, void *start_addr, void *boot_param
 	printk(KERN_INFO "%s: booting on cpu %d, start_addr 0x%p, start_ip 0x%p\n",
 	       __func__, boot_cpu, (unsigned long)start_addr, start_ip);
 
-	smpboot_setup_warm_reset_vector(start_ip);
+	spin_lock_irqsave(&rtc_lock, flags);
+	CMOS_WRITE(0xa, 0xf);
+	spin_unlock_irqrestore(&rtc_lock, flags);
+	local_flush_tlb();
+	pr_debug("1.\n");
+	*((volatile unsigned short *)phys_to_virt(TRAMPOLINE_PHYS_HIGH)) =
+							start_ip >> 4;
+	pr_debug("2.\n");
+	*((volatile unsigned short *)phys_to_virt(TRAMPOLINE_PHYS_LOW)) =
+							start_ip & 0xf;
+	pr_debug("3.\n");
 
 	apic_write(APIC_ESR, 0);
 	apic_read(APIC_ESR);
@@ -310,7 +319,6 @@ static struct cpumask *dummy_lproc_cpu_mask = to_cpumask(dummy_lproc_cpu_bits);
 
 void __init dummy_lproc_prepare_boot_cpu(void)
 {
-	char cpus[NR_CPUS*5];
 	int cpu = first_cpu(cpumask_bits(dummy_lproc_cpu_mask));
 
 //	native_smp_prepare_boot_cpu();
@@ -319,9 +327,8 @@ void __init dummy_lproc_prepare_boot_cpu(void)
 	cpumask_set_cpu(cpu, cpu_callout_mask);
 	per_cpu(cpu_state, cpu) = CPU_ONLINE;
 
-	cpulist_scnprintf(cpus, sizeof(cpus), dummy_lproc_cpu_mask);
-	printk(KERN_INFO "dummy_lproc: booting on CPU(s) %s (cpu_id %d cpu_number %d))\n",
-	       cpus, smp_processor_id(), this_cpu_read(cpu_number));
+	printk(KERN_INFO "dummy_lproc: booting on CPU(s) %*pb (cpu_id %d cpu_number %d))\n",
+	       dummy_lproc_cpu_mask, smp_processor_id(), this_cpu_read(cpu_number));
 
 	setup_max_cpus = cpumask_weight(dummy_lproc_cpu_mask);
 
@@ -371,14 +378,7 @@ void __init dummy_lproc_prepare_cpus(unsigned int max_cpus)
 		/* Or can we switch back to PIC here? */
 	}
 
-	connect_bsp_APIC();
-
-	/*
-	 * Switch from PIC to APIC mode.
-	 */
-	setup_local_APIC();
-
-	bsp_end_local_APIC_setup();
+	apic_bsp_setup(false);
 
 	pr_info("CPU%d: ", cpu);
 	print_cpu_info(&cpu_data(cpu));
