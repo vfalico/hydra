@@ -30,6 +30,7 @@
 #include <asm/cpu.h>
 #include <asm/mtrr.h>
 #include <asm/x86_init.h>
+#include <asm/io_apic.h>
 
 #include "dummy_proc.h"
 
@@ -319,35 +320,37 @@ static struct cpumask *dummy_lproc_cpu_mask = to_cpumask(dummy_lproc_cpu_bits);
 
 void __init dummy_lproc_prepare_boot_cpu(void)
 {
-	int cpu = first_cpu(cpumask_bits(dummy_lproc_cpu_mask));
+	int cpu = cpumask_first(cpumask_bits(dummy_lproc_cpu_mask));
 
 //	native_smp_prepare_boot_cpu();
 
 	switch_to_new_gdt(cpu);
 	cpumask_set_cpu(cpu, cpu_callout_mask);
-	per_cpu(cpu_state, cpu) = CPU_ONLINE;
+	cpu_set_state_online(cpu);
 
-	printk(KERN_INFO "dummy_lproc: booting on CPU(s) %*pb (cpu_id %d cpu_number %d))\n",
-	       dummy_lproc_cpu_mask, smp_processor_id(), this_cpu_read(cpu_number));
+	printk(KERN_INFO "%s: booting on CPU(s) %*pb (cpu_id %d cpu_number %d))\n",
+	       __func__, dummy_lproc_cpu_mask, smp_processor_id(), this_cpu_read(cpu_number));
 
 	setup_max_cpus = cpumask_weight(dummy_lproc_cpu_mask);
 
 	cpumask_copy((struct cpumask *)cpu_present_mask, dummy_lproc_cpu_mask);
+/*	cpumask_setall((struct cpumask *)cpu_present_mask);
+	cpumask_xor((struct cpumask *)cpu_present_mask, (struct cpumask *)cpu_present_mask, dummy_lproc_cpu_mask);*/
 	cpumask_set_cpu(cpu, &phys_cpu_present_map);
 	cpumask_clear((struct cpumask *)cpu_online_mask);
-	cpumask_set_cpu(first_cpu(cpumask_bits(dummy_lproc_cpu_mask)),
+	cpumask_set_cpu(cpumask_first(cpumask_bits(dummy_lproc_cpu_mask)),
 			(struct cpumask *)cpu_online_mask);
 	cpumask_copy((struct cpumask *)cpu_active_mask, cpu_online_mask);
 	cpumask_copy((struct cpumask *)cpu_possible_mask, cpu_online_mask);
 //	nr_cpu_ids = setup_max_cpus;
-
-	current_thread_info()->cpu = cpu;  /* needed? */
 }
 
 void __init dummy_lproc_prepare_cpus(unsigned int max_cpus)
 {
-	unsigned int i, cpu = first_cpu(cpumask_bits(dummy_lproc_cpu_mask));
+	unsigned int i, cpu = cpumask_first(cpumask_bits(dummy_lproc_cpu_mask));
 	struct cpuinfo_x86 *c = &cpu_data(cpu);
+
+	printk(KERN_ERR "%s: booting on cpu %d\n", __func__, cpu);
 
 	*c = boot_cpu_data;
 
@@ -362,7 +365,6 @@ void __init dummy_lproc_prepare_cpus(unsigned int max_cpus)
 	cpumask_copy(cpu_callin_mask, cpumask_of(cpu));
 	mb();
 
-	current_thread_info()->cpu = cpu;  /* needed? */
 	for_each_possible_cpu(i) {
 		zalloc_cpumask_var(&per_cpu(cpu_sibling_map, i), GFP_KERNEL);
 		zalloc_cpumask_var(&per_cpu(cpu_core_map, i), GFP_KERNEL);
@@ -377,20 +379,36 @@ void __init dummy_lproc_prepare_cpus(unsigned int max_cpus)
 		     read_apic_id(), boot_cpu_physical_apicid);
 		/* Or can we switch back to PIC here? */
 	}
+	printk(KERN_ERR "%s: Boot APIC ID in local APIC good (%d vs %d)",
+	       __func__, read_apic_id(), boot_cpu_physical_apicid);
 
 	apic_bsp_setup(false);
 
 	pr_info("CPU%d: ", cpu);
 	print_cpu_info(&cpu_data(cpu));
-	x86_init.timers.setup_percpu_clockev();
+//	x86_init.timers.setup_percpu_clockev();
 
-	if (is_uv_system())
+/*	if (is_uv_system())
 		uv_system_init();
 
-	set_mtrr_aps_delayed_init();
+	set_mtrr_aps_delayed_init();*/
+	printk(KERN_INFO "%s: booting on CPU(s) %*pbl (cpu_id %d cpu_number %d))\n",
+	       __func__, cpumask_pr_args(dummy_lproc_cpu_mask), smp_processor_id(), this_cpu_read(cpu_number));
 }
 
 extern struct smp_ops smp_ops;
+
+int __init dummy_mpc_apic_id(struct mpc_cpu *m)
+{
+	printk(KERN_ERR "%s: apicid %d\n", __func__, m->apicid);
+
+	if (m->apicid == boot_cpu_physical_apicid)
+		m->cpuflag |= CPU_BOOTPROCESSOR;
+	else
+		m->cpuflag &= ~CPU_BOOTPROCESSOR;
+
+	return default_mpc_apic_id(m);
+}
 
 static int __init dummy_lproc_early_param(char *p)
 {
@@ -405,10 +423,15 @@ static int __init dummy_lproc_early_param(char *p)
 
 	dummy_lproc_id = 1;
 
-//	x86_init.oem.banner = dummy_lproc_show_banner;
 	smp_ops.smp_prepare_boot_cpu = dummy_lproc_prepare_boot_cpu;
+	printk(KERN_ERR "%s: setting boot_cpu_phsyical_apicid (%d) in phys_cpu_present_map\n", __func__, boot_cpu_physical_apicid);
+	x86_init.mpparse.mpc_apic_id = dummy_mpc_apic_id;
+//	physid_set(boot_cpu_physical_apicid, phys_cpu_present_map);
 	smp_ops.smp_prepare_cpus = dummy_lproc_prepare_cpus;
 	lapic_timer_frequency = 1000000;
+	current_thread_info()->cpu = 1;  /* needed? */
+//	skip_ioapic_setup = 1;
+//	this_cpu_write(cpu_number, 1);
 
 	return 0;
 }
