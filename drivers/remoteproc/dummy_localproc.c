@@ -427,6 +427,7 @@ static int __init dummy_lproc_early_param(char *p)
 	printk(KERN_ERR "%s: setting boot_cpu_phsyical_apicid (%d) in phys_cpu_present_map\n", __func__, boot_cpu_physical_apicid);
 	x86_init.mpparse.mpc_apic_id = dummy_mpc_apic_id;
 //	physid_set(boot_cpu_physical_apicid, phys_cpu_present_map);
+	cpumask_set_cpu(1, cpu_callout_mask);
 	smp_ops.smp_prepare_cpus = dummy_lproc_prepare_cpus;
 	lapic_timer_frequency = 1000000;
 	current_thread_info()->cpu = 1;  /* needed? */
