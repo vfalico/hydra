@@ -140,6 +140,7 @@ static int dummy_rproc_start(struct rproc *rproc)
 	}
 
 	memcpy(bp, &boot_params, sizeof(*bp));
+	memset(&bp->screen_info, 0, sizeof(bp->screen_info));
 
 	if (memcmp(&bp->hdr.header, "HdrS", 4) != 0) {
 		dev_err(&rproc->dev, "struct boot_params is broken.\n");
