@@ -109,6 +109,14 @@ int dummy_lproc_boot_remote_cpu(int boot_cpu, void *start_addr, void *boot_param
 	size_t size = PAGE_ALIGN(x86_trampoline_bsp_end - x86_trampoline_bsp_start);
 	char *bsp_hacked;
 
+	ret = cpu_down(boot_cpu);
+
+	if (ret) {
+		printk(KERN_ERR "%s: couldn't cpu_down() cpu %d (errno %d)\n",
+		       __func__, boot_cpu, ret);
+		return ret;
+	}
+
 	bsp_hacked = __va(__pa(x86_trampoline_bsp_start) + 0x400000);
 	printk(KERN_DEBUG "Base memory trampoline BSP at [%p] %llx size %zu, copying from 0x%p (pa 0x%p, va hacked 0x%p)\n",
 	       x86_trampoline_bsp_base, (unsigned long long)__pa(x86_trampoline_bsp_base),
@@ -117,15 +125,8 @@ int dummy_lproc_boot_remote_cpu(int boot_cpu, void *start_addr, void *boot_param
 	       bsp_hacked);
 	memcpy(x86_trampoline_bsp_base, bsp_hacked, size);
 
-	ret = cpu_down(boot_cpu);
-
-	if (ret) {
-		printk(KERN_ERR "%s: couldn't cpu_down() cpu %d (errno %d)\n",
-		       __func__, boot_cpu, ret);
-		return ret;
-	}
-	arch_unregister_cpu(boot_cpu);
-	set_cpu_present(boot_cpu, false);
+/*	arch_unregister_cpu(boot_cpu);
+	set_cpu_present(boot_cpu, false);*/
 
 	apicid = per_cpu(x86_bios_cpu_apicid, boot_cpu);
 	pr_info("%s: trampoline addr 0x%p status = 0x%x\n", __func__,
@@ -328,8 +329,8 @@ void __init dummy_lproc_prepare_boot_cpu(void)
 	cpumask_set_cpu(cpu, cpu_callout_mask);
 	cpu_set_state_online(cpu);
 
-	printk(KERN_INFO "%s: booting on CPU(s) %*pb (cpu_id %d cpu_number %d))\n",
-	       __func__, dummy_lproc_cpu_mask, smp_processor_id(), this_cpu_read(cpu_number));
+//	printk(KERN_INFO "%s: booting on CPU(s) %*pb (cpu_id %d cpu_number %d))\n",
+//	       __func__, dummy_lproc_cpu_mask, smp_processor_id(), this_cpu_read(cpu_number));
 
 	setup_max_cpus = cpumask_weight(dummy_lproc_cpu_mask);
 
@@ -386,7 +387,7 @@ void __init dummy_lproc_prepare_cpus(unsigned int max_cpus)
 
 	pr_info("CPU%d: ", cpu);
 	print_cpu_info(&cpu_data(cpu));
-//	x86_init.timers.setup_percpu_clockev();
+	x86_init.timers.setup_percpu_clockev();
 
 /*	if (is_uv_system())
 		uv_system_init();
@@ -428,9 +429,12 @@ static int __init dummy_lproc_early_param(char *p)
 	x86_init.mpparse.mpc_apic_id = dummy_mpc_apic_id;
 //	physid_set(boot_cpu_physical_apicid, phys_cpu_present_map);
 	cpumask_set_cpu(1, cpu_callout_mask);
+	cpumask_clear(cpu_possible_mask);
+	cpumask_set_cpu(1, cpu_possible_mask);
 	smp_ops.smp_prepare_cpus = dummy_lproc_prepare_cpus;
 	lapic_timer_frequency = 1000000;
-	current_thread_info()->cpu = 1;  /* needed? */
+	boot_cpu_data.cpuid_level = -1;
+//	current_thread_info()->cpu = 1;  /* needed? */
 //	skip_ioapic_setup = 1;
 //	this_cpu_write(cpu_number, 1);
 
